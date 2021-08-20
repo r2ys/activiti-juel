@@ -712,7 +712,8 @@ public class JuelParser {
     }
 
     public static void main(String[] args) {
-        String expressionText = "${(char1==person.name && char1=='helloworld' && char1!=null && char1==varhelloworld) || (number1>1.00100 && number1==6.00 && number1<7.001 && number1<=6.0000 && number1>=6 && number1!=5 && number1!=null) || (bool1==true && bool2==false && time1!=null && timenull==null && time1=='2021-08-11' && time1<'2022-01-01' && time1>'2021-01-01')}";
+        String expressionText = "${(string1=='helloworld' && string1==null && string1!=null && string1==varhelloworld && string1>objectparam.string_var1) || (number2>1 && number2==6.0 && number2<7.001 && number2>=6 && number2<=6.000 && number2!=-10.00010000 && number2==null && number2!=null && number2==varnumber && number2==objectparam.num_var2) || (date3!=null && date3==null && date3=='2021-08-11' && date3<'2022-01-01' && date3>'2021-01-01' && date3==vardate3 && date3==objectparam.date_var3) || (bool4==true && bool4==false && bool4==varbool4 && bool4==objectparam.bool_var4)}";
+        System.out.println(expressionText);
         JuelParser parser = new JuelParser(new Builder(), expressionText);
         ExpressionNode expressionNode = null;
         try {
@@ -722,8 +723,13 @@ public class JuelParser {
         }
         try {
             AstNode root = (AstNode) expressionNode.getChild(0);
+            // todo 解析完整的表达式语法树，不完善
             ExpLeafNode rootNode = JuelParser.parseExpressTree(root);
             System.out.println(rootNode.toString());
+
+            // 解析表达式语法树中的变量
+            Set<String> variableSet = JuelParser.parseExpressTreeVariables(root);
+            System.out.println(variableSet);
         } catch (Exception e) {
             e.printStackTrace();
         }
@@ -860,6 +866,43 @@ public class JuelParser {
 
         }
         return leafNode;
+    }
+
+    public static Set<String> parseExpressTreeVariables(AstNode rootChild) throws Exception {
+        Set<String> variableSet = new HashSet<>();
+        if (rootChild instanceof AstBinary) {
+            Class<? extends AstNode> rootChildClass = rootChild.getClass();
+            Field leftField = rootChildClass.getDeclaredField("left");
+            leftField.setAccessible(true);
+            AstNode leftNode = (AstNode) leftField.get(rootChild);
+            Field rightField = rootChildClass.getDeclaredField("right");
+            rightField.setAccessible(true);
+            AstNode rightNode = (AstNode) rightField.get(rootChild);
+            variableSet.addAll(parseExpressTreeVariables(leftNode));
+            variableSet.addAll(parseExpressTreeVariables(rightNode));
+        } else if (rootChild instanceof AstNested) {
+            AstNode subNode = (AstNode) rootChild.getChild(0);
+            Set<String> variables = parseExpressTreeVariables(subNode);
+            variableSet.addAll(variables);
+        } else if (rootChild instanceof AstIdentifier) {
+            String variableName = ((AstIdentifier) rootChild).getName();
+            variableSet.add(variableName);
+        } else if (rootChild instanceof AstDot) {
+            AstDot objectParamValue = (AstDot) rootChild;
+            Field prefixField = null;
+            try {
+                prefixField = objectParamValue.getClass().getDeclaredField("prefix");
+            } catch (NoSuchFieldException e) {
+                prefixField = objectParamValue.getClass().getSuperclass().getDeclaredField("prefix");
+            }
+            prefixField.setAccessible(true);
+            AstIdentifier objectIdentifier = (AstIdentifier) prefixField.get(objectParamValue);
+            String clazzName = objectIdentifier.getName();
+            Field propertyField = objectParamValue.getClass().getDeclaredField("property");
+            propertyField.setAccessible(true);
+            variableSet.add(clazzName);
+        }
+        return variableSet;
     }
 
     @Data
